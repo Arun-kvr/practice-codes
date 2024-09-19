@@ -475,3 +475,80 @@ class Controller(vkt.Controller):
         
         # Return the DataView with a name and the data
         return DataView(data_group)
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+import pdfplumber
+from docx import Document
+import viktor as vkt
+from viktor.parametrization import FileField
+
+class Parametrization(vkt.Parametrization):
+    resume = FileField('Upload Resume (PDF/DOCX)', file_types=['.pdf', '.docx'])
+
+class Controller(vkt.Controller):
+    # Link the parametrization
+    parametrization = Parametrization
+
+    # Function to extract text from PDF
+    def extract_text_from_pdf(self, file):
+        text = ""
+        with pdfplumber.open(file) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text()
+        return text
+
+    # Function to extract text from DOCX
+    def extract_text_from_docx(self, file):
+        doc = Document(file)
+        return "\n".join([para.text for para in doc.paragraphs])
+
+    # Function to parse the resume and extract key sections
+    def parse_resume(self, text):
+        sections = {
+            'Name': '',
+            'Email': '',
+            'Phone': '',
+            'Education': '',
+            'Experience': '',
+            'Skills': ''
+        }
+
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            if 'email' in line.lower():
+                sections['Email'] = line
+            elif 'phone' in line.lower() or any(char.isdigit() for char in line):
+                sections['Phone'] = line
+            elif 'education' in line.lower():
+                sections['Education'] = " ".join(lines[i:i+3])
+            elif 'experience' in line.lower():
+                sections['Experience'] = " ".join(lines[i:i+5])
+            elif 'skills' in line.lower():
+                sections['Skills'] = " ".join(lines[i:i+3])
+            elif i == 0:  # Assume the first line is the name
+                sections['Name'] = line
+
+        return sections
+
+    # Example method that handles the file upload and processes the resume
+    def process_resume(self, params, **kwargs):
+        resume_file = params.resume
+
+        # Determine the file type and extract text accordingly
+        file_ext = resume_file.name.split('.')[-1].lower()
+
+        if file_ext == 'pdf':
+            resume_text = self.extract_text_from_pdf(resume_file.get_value())
+        elif file_ext == 'docx':
+            resume_text = self.extract_text_from_docx(resume_file.get_value())
+        else:
+            raise ValueError("Unsupported file format. Please upload a PDF or DOCX file.")
+
+        # Parse the resume text
+        parsed_data = self.parse_resume(resume_text)
+
+        # For now, just return the parsed data as a dictionary
+        return parsed_data
